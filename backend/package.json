@@ -1,0 +1,16 @@
+{
+  "name": "naila-home-backend",
+  "version": "1.0.0",
+  "description": "API + admin dashboard for the Naila Home ordering app",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "nanoid": "^3.3.7",
+    "pdfkit": "^0.15.0"
+  }
+}

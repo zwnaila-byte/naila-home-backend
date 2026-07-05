@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Naila Home — Admin</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  :root{ --navy:#241542; --purple:#8B6BB8; --gold:#C99A46; --bg:#F6F1FB; --line:#E5DCF3; }
+  *{box-sizing:border-box;}
+  body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);margin:0;color:var(--navy);}
+  header{background:var(--navy);color:#fff;padding:18px 24px;display:flex;justify-content:space-between;align-items:center;}
+  header h1{font-size:18px;margin:0;}
+  main{max-width:800px;margin:24px auto;padding:0 16px;}
+  .login-box{background:#fff;padding:24px;border-radius:12px;max-width:320px;margin:60px auto;box-shadow:0 4px 20px rgba(0,0,0,.08);}
+  .login-box input{width:100%;padding:10px;margin:10px 0;border:1px solid var(--line);border-radius:8px;}
+  .login-box button, .refresh-btn{background:var(--purple);color:#fff;border:none;padding:10px 16px;border-radius:8px;cursor:pointer;font-weight:600;}
+  table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 14px rgba(107,71,158,.08);}
+  th,td{padding:12px 14px;text-align:left;font-size:13px;border-bottom:1px solid var(--line);}
+  th{background:#F0E9FA;font-size:11px;text-transform:uppercase;letter-spacing:.4px;}
+  select{padding:6px 8px;border-radius:6px;border:1px solid var(--line);}
+  .toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;}
+  .hidden{display:none;}
+  .error{color:#B4463A;font-size:12px;margin-top:6px;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Naila Home — Order Dashboard</h1>
+  <span id="logout-link" class="hidden" style="cursor:pointer;font-size:12px;text-decoration:underline;">Log out</span>
+</header>
+
+<main>
+  <div id="login-box" class="login-box">
+    <p>Enter the admin password to view and update orders.</p>
+    <input id="password-input" type="password" placeholder="Admin password">
+    <button onclick="login()">Log in</button>
+    <div id="login-error" class="error"></div>
+  </div>
+
+  <div id="dashboard" class="hidden">
+    <div class="toolbar">
+      <span id="order-count"></span>
+      <button class="refresh-btn" onclick="loadOrders()">Refresh</button>
+    </div>
+    <table>
+      <thead>
+        <tr><th>Order ID</th><th>Customer</th><th>Items</th><th>Zone / Fee</th><th>Total</th><th>Status</th></tr>
+      </thead>
+      <tbody id="orders-body"></tbody>
+    </table>
+  </div>
+</main>
+
+<script>
+  const API_BASE = window.location.origin;
+  let adminPassword = sessionStorage.getItem('nh_admin_pw') || '';
+  const STATUSES = ['Order Placed','Processing','Out for Delivery','Delivered'];
+
+  if (adminPassword) { showDashboard(); loadOrders(); }
+
+  function login() {
+    adminPassword = document.getElementById('password-input').value;
+    sessionStorage.setItem('nh_admin_pw', adminPassword);
+    loadOrders();
+  }
+
+  function showDashboard() {
+    document.getElementById('login-box').classList.add('hidden');
+    document.getElementById('dashboard').classList.remove('hidden');
+    document.getElementById('logout-link').classList.remove('hidden');
+  }
+
+  document.getElementById('logout-link').onclick = () => {
+    sessionStorage.removeItem('nh_admin_pw');
+    location.reload();
+  };
+
+  async function loadOrders() {
+    const res = await fetch(API_BASE + '/api/admin/orders', {
+      headers: { 'x-admin-password': adminPassword }
+    });
+    if (res.status === 401) {
+      document.getElementById('login-error').textContent = 'Incorrect password.';
+      return;
+    }
+    showDashboard();
+    const data = await res.json();
+    renderOrders(data.orders);
+  }
+
+  function renderOrders(orders) {
+    document.getElementById('order-count').textContent = orders.length + ' order(s)';
+    const body = document.getElementById('orders-body');
+    body.innerHTML = orders.map(o => `
+      <tr>
+        <td><strong>${o.id}</strong><br><small>${new Date(o.placedAt).toLocaleString()}</small><br><small>${o.invoiceId}</small></td>
+        <td>${o.customer.name}<br><small>${o.customer.phone}</small><br><small>${o.customer.address}</small></td>
+        <td>${o.items.map(i => i.name + ' ×' + i.qty).join('<br>')}</td>
+        <td>${o.zone}<br><small>${o.distanceKm !== null && o.distanceKm !== undefined ? o.distanceKm + 'km · ' : ''}${o.fee !== null ? '$' + o.fee.toFixed(2) : 'Quoted separately'}</small></td>
+        <td>$${o.total.toFixed(2)}</td>
+        <td>
+          <select onchange="updateStatus('${o.id}', this.value)">
+            ${STATUSES.map(s => `<option value="${s}" ${o.status===s?'selected':''}>${s}</option>`).join('')}
+          </select>
+          <br><a href="#" onclick="downloadInvoice('${o.id}'); return false;" style="font-size:11px;">Download invoice</a>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  async function downloadInvoice(id) {
+    const res = await fetch(API_BASE + '/api/admin/orders/' + id + '/invoice.pdf', {
+      headers: { 'x-admin-password': adminPassword }
+    });
+    if (!res.ok) { alert('Could not fetch invoice.'); return; }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = id + '-invoice.pdf'; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function updateStatus(id, status) {
+    await fetch(API_BASE + '/api/admin/orders/' + id + '/status', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'x-admin-password': adminPassword },
+      body: JSON.stringify({ status })
+    });
+    loadOrders();
+  }
+</script>
+</body>
+</html>
